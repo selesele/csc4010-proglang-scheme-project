@@ -1,4 +1,5 @@
 ; Takes the first num elements of the given list.
+; Returns the empty list if
 (define (take xs num)
   (cond ((zero? num) '()) ; If we've taken our amount, stop.
         ((null? xs) '()) ; Similar case if we've run out of things to take.
