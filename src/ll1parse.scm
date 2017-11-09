@@ -101,6 +101,7 @@
                        (cdr prods)))
                 grammar))))
 
+; SHOULD THIS ALSO CHECK IF MEMBER OF GSYMBOLS?
 (define non-terminal?
   (lambda (x grammar)
     ; Is x a non-terminal?
@@ -188,6 +189,7 @@
     (map (lambda (A) (list A #f '() '()))
          (non-terminals grammar))))
 
+; ASSOC SHOULD TAKE IN AN ASSOCIATION LIST, I.E. A LIST OF PAIRS, work by our knowledge structure
 (define symbol-knowledge
   (lambda (A knowledge)
     ; Return knowledge vector for A.
@@ -224,6 +226,8 @@
     ; Simply look it up.
     (cadddr (symbol-knowledge A knowledge))))
 
+; The knowledge data structures looks like this:
+; ((symbol (4-tuple knowledge vector on symbol)) (symbol (4-tuple knowledge vector on symbl)) ... )
 (define get-knowledge
   (lambda (grammar)
     ; Return knowledge structure for grammar.
