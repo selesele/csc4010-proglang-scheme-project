@@ -195,6 +195,7 @@
     ; Return knowledge vector for A.
     (assoc A knowledge)))
 
+; w is expected to be either a symbol or list of symbols
 (define generates-epsilon?
   (lambda (w knowledge grammar)
     ; Can w generate epsilon based on current estimates?
@@ -202,10 +203,12 @@
     ; if w is a non-terminal, look it up
     ; if w is an empty list, yes
     ; if w is a non-empty list, "iterate" over elements
-
-      ;;; your code here
-    '() ;; added by MJK
-
+    (cond
+      ((terminal? w grammar) #f)
+      ((non-terminal? w grammar) (caddr (symbol-knowledge w knowledge)))
+      ((null? w) #t)
+      (else (map generates-epsilon? w))
+    )
     ))
 
 (define first
@@ -215,9 +218,12 @@
     ; if w is a non-terminal, look it up
     ; if w is an empty list, return ()  [empty set]
     ; if w is a non-empty list, "iterate" over elements
-
-      ;;; your code here
-    '() ;; added by MJK
+    (cond
+      ((terminal? w grammar) w)
+      ((non-terminal? w grammar) #| look it up |#)
+      ((null? w) '())
+      (else #| iterate |#)
+    )
     ))
 
 (define follow
@@ -228,6 +234,8 @@
 
 ; The knowledge data structures looks like this:
 ; ((symbol (4-tuple knowledge vector on symbol)) (symbol (4-tuple knowledge vector on symbl)) ... )
+; 4-tuple is (the nonterminal, if we think it generates epsilon, current estimate of FIRST - epsilon
+; FOLLOW - epsilon)
 (define get-knowledge
   (lambda (grammar)
     ; Return knowledge structure for grammar.
