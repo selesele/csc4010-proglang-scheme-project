@@ -20,7 +20,18 @@
     ("F"  ("id") ("num") ("(" "E" ")"))
     ))
 
-
+(define test-gram
+  '(("P"  ("SL" "$$"))
+    ("SL" ("S" "SL") ())
+    ("S"  ("id" ":=" "E") ("read" "id") ("write" "E"))
+    ("E"  ("T" "TT"))
+    ("T"  ("F" "FT"))
+    ("TT" ("ao" "T" "TT") ())
+    ("FT" ("mo" "F" "FT") ())
+    ("ao" ("+") ("-") ("SL" "TT"))
+    ("mo" ("*") ("/"))
+    ("F"  ("id") ("num") ("(" "E" ")"))
+    ))
 
 
 ; Helper Functions
@@ -123,13 +134,11 @@
                        (cdr prods)))
                 grammar))))
 
-; SHOULD THIS ALSO CHECK IF MEMBER OF GSYMBOLS?
+
 (define non-terminal?
   (lambda (x grammar)
-    ; Is x a non-terminal?
     (not (not (member x (non-terminals grammar))))))
-    ; 'not not' makes return type a boolean, not a list
-
+ 
 (define gsymbol?
   (lambda (x grammar)
     ; is x a symbol in grammar?
@@ -150,31 +159,185 @@
 
 ;-----------------------OUR FUNCTIONS---------------------------
 ; change non-terminals to get-non-terminals
+; redo the defines to have lambda
+; They recompute sets on the fly, and so shall we
 
+; We interestingly need to define logical OR and AND as functions to be used as first-class values
+; Particularly, we ran into this case when trying to foldr with or
+(define or-fn
+    (lambda (b1 b2)
+      (or b1 b2)))
+(define and-fn
+    (lambda (b1 b2)
+      (and b1 b2)))
+
+
+; Nests list items each within a list
+(define nest
+  (lambda (lst)
+    (if (null? lst) '()
+        (cons (list (car lst)) (nest (cdr lst))))))
+
+; Removes one layer of nesting in a list
+(define un-nest
+  (lambda (lst)
+    (if (null? lst) '()
+        (cons (car (car lst)) (un-nest (cdr lst))))))
+
+
+; Epsilon-producing set
+; Our assumption is that if a nt is in eps, lambda is in FIRST(nt)
+; EPS is defined as any non-terminal that has an epsilon production OR
+;  any non-terminal that has a production containing only non-terminals that are all in EPS
+(define eps
+  (lambda (grammar)
+    (union
+     ; all non-terminals with an epsilon production
+      (filter (lambda (nt)
+                (has-epsilon-production? nt grammar))
+              (non-terminals grammar))
+     ; unioned with all non-terminals that have a production of all non-terminals that each produce epsilon
+      (un-nest
+       (filter (lambda (nt)
+                (produces-epsilon? nt grammar))
+              (nest
+               (filter (lambda (nt)
+                         (has-non-terminal-only-production? nt grammar))
+                       (non-terminals grammar))))))))
+
+; Take a non-terminal
+; does it have a nt only prod?
+; if so, then check if at least one nt-only prod has only nt's that 
+
+
+
+; Takes in an x and sees if it will ever produce epsilon given the grammar
+(define produces-epsilon?
+  (lambda (w grammar)
+    ; all non-terminals in the function must
+    (foldr and-fn #t
+           (map (lambda (nt)
+                  (cond
+                   ((has-epsilon-production? nt grammar) #t)
+                   ((has-non-terminal-only-production? nt grammar)
+                    (foldr or-fn #f
+                           (map (lambda (prod)
+                                  (produces-epsilon? prod grammar))
+                                (get-non-terminal-only-productions nt grammar))))
+                   (else #f)))
+                w))))
+
+
+
+
+; Determines if a given w is comprised of only non-terminals
+; The special case is to deal with the lack of symmetrical definitons in the grammar
+; i.e. the production containing epsilon is only the empty list not the list containing the empty list
+(define only-non-terminals?
+  (lambda (w grammar)
+    (if (null? w) #f
+        (not (member #f
+                     (map (lambda (w)
+                            (non-terminal? w grammar))
+                          w))))))
+
+; Determines if a given non-terminal has at least one non-terminal only production
+(define has-non-terminal-only-production?
+  (lambda (nt grammar)
+    ; if any production has a non-terminal-only production, we return true
+    (not (not (member #t
+                      (map (lambda (prod)
+                             (only-non-terminals? prod grammar))
+                           (get-productions nt grammar)))))))
+
+
+; Checks if the given non-terminal has an epsilon production
+(define has-epsilon-production?
+  (lambda (nt grammar)
+    (not (not (member #t
+                      (map null? (get-productions nt grammar)))))))
+
+; Removes all occurence of obj in lst
+(define (remove obj lst)
+    (cond
+      ((null? lst) '())
+      ((equal? (car lst) obj) (remove obj (cdr lst)))
+      (else
+       (cons (car lst) (remove obj (cdr lst))))))
+
+; Returns set1 - set2
+; N.B. if removing epsilon, you need to pass in the set containing epsilon
+(define (set-difference set1 set2)
+  (cond
+    ; can't remove something from nothing
+    ((null? set1) '())
+    ; if our current element of set 1 is not in set 2, we can return it and continue
+    ((not (member (car set1) set2))
+     (cons (car set1) (set-difference (cdr set1) set2)))
+    (else
+    ; otherwise, we need to remove that element (by ignoring it)
+     (set-difference (cdr set1) set2))))
+
+; Lookup to see if the given non-terminal is in the EPS set
+(define (in-eps? nt grammar)
+  ; member's return value is forced int #t/#f
+  (not (not (member nt (eps grammar)))))
+
+
+; Returns the productions with a LHS of nt
+; Assummes nt is a LHS and grammar is in the form of our calculator grammar
+;  That is, an association list with all productions on the RHS for a given non-terminal
 (define (get-productions nt grammar)
-   ;(filter (lambda (lst)
-    ;        (not (null? lst)))
-   (map (lambda (prod)
-         (if (eq? nt (car prod)) (cdr prod) '()))
-       grammar))
+   (cdr
+    (assoc nt grammar)))
+
+(define get-non-terminal-only-productions
+  (lambda (nt grammar)
+    (filter (lambda (w)
+              (only-non-terminals? w grammar))
+            (get-productions nt grammar))))
 
 
 
 ; Generates the FIRST set for the given non terminal using the given grammar
 ; TODO confirm unique not needed here
-(define (gen-first-set nt grammar)
-  (flatten (map gen-first-set-prime (get-productions nt grammar))))
+(define (gen-nt-first-set nt grammar)
+  ; Rule 3 is applied first
+  (flatten
+   ; TODO fit this map to have the grammar and eps too
+   (map (lambda (nt)
+          (gen-x-first-set nt grammar (eps grammar)))
+        (get-productions nt grammar))))
 
-(define (gen-first-set-prime x grammar)
+; Returns the FIRST set for a given x using the given grammar
+(define (gen-x-first-set x grammar epsilon-producing-set)
   (cond
+    ; Rule 1 - FIRST(Epsilon) = {Epsilon}
     ((null? x) '())
-    ((list? x) (if (non-terminal? (car x)) (car x)
-                   '()))))
+    ((list? x)
+     ; Rule 2 - FIRST(aw) = FIRST(a) = {a}
+     (if (terminal? (car x) grammar) (list (car x))
+         ; Rule 4 - we have a w with two cases
+         ; FIRST(Aw) = FIRST(A)
+         (if (not (in-eps? (car x) grammar)) (gen-x-first-set x grammar (eps grammar))
+             ; FIRST(Aw) = (FIRST(A) - {Epsilon}) U FIRST(w)
+             (union
+              (set-difference (gen-x-first-set (car x) grammar epsilon-producing-set) '(()))
+              (gen-x-first-set (cdr x) grammar epsilon-producing-set)))))
+    ; It is just a terminal - FIRST(x) = {x}
+    ((terminal? x grammar) ('(x)))
+    (else
+     ; It is just a non-terminal, and so we apply rule 3 first
+     (gen-nt-first-set x grammar))))
 
 
-
-;(define first-sets
- ; (pair non-terminals (map gen-first-set non-terminals)))
+; association list with the first sets for each non-terminal
+(define first-sets
+  (lambda (grammar)
+    (pair non-terminals
+          (map (lambda (nt)
+                 (gen-nt-first-set nt grammar))
+               (non-terminals grammar)))))
 
 
 
@@ -250,3 +413,9 @@
                        (die (string-append "no prediction for " (car stack)
                                            " when seeing " (car input)))))))))))
       (helper (list (start-symbol grammar)) input))))
+
+
+
+
+
+
