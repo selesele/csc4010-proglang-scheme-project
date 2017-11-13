@@ -316,36 +316,30 @@
             (productions grammar))))
 
 
-; Generates the FIRST set for the given non terminal using the given grammar
-; TODO confirm unique not needed here
-(define (gen-nt-first-set nt grammar)
-  ; Rule 3 is applied first
-  (flatten
-   ; TODO fit this map to have the grammar and eps too
-   (map (lambda (prod)
-          (gen-x-first-set prod grammar (eps grammar)))
-        (get-productions nt grammar))))
-
 ; Returns the FIRST set for a given x using the given grammar
-(define (gen-x-first-set x grammar epsilon-producing-set)
+(define (gen-first-set x grammar epsilon-producing-set)
   (cond
     ; Rule 1 - FIRST(Epsilon) = {Epsilon}
     ((null? x) '(()))
     ; Is it just a terminal? FIRST(x) = {x}
     ((terminal? x grammar) ('(x)))
-    ; It is just a non-terminal, and so we apply rule 3 first
-    ((non-terminal? x grammar) (gen-nt-first-set x grammar))
+    ; It is just a non-terminal, and so we apply Rule 3 first
+    ((non-terminal? x grammar)
+     (flatten
+      (map (lambda (prod)
+             (gen-first-set prod grammar epsilon-producing-set))
+           (get-productions x grammar))))
     (else
      ; Rule 2 - FIRST(aw) = FIRST(a) = {a}
      (if (terminal? (car x) grammar) (list (car x))
          ; Rule 4 - we have a w with two cases
          ; We also assume that lambda is not an element of FIRST(A) if A is in the EPS
          ; FIRST(Aw) = FIRST(A)
-         (if (not (in-eps? (car x) grammar)) (gen-x-first-set (car x) grammar epsilon-producing-set)
+         (if (not (in-eps? (car x) grammar)) (gen-first-set (car x) grammar epsilon-producing-set)
              ; FIRST(Aw) = (FIRST(A) - {Epsilon}) U FIRST(w)
              (union
-              (set-difference (gen-x-first-set (car x) grammar epsilon-producing-set) '(()))
-              (gen-x-first-set (cdr x) grammar epsilon-producing-set)))))))
+              (set-difference (gen-first-set (car x) grammar epsilon-producing-set) '(()))
+              (gen-first-set (cdr x) grammar epsilon-producing-set)))))))
 
 
 ; association list with the first sets for each non-terminal
@@ -353,7 +347,7 @@
   (lambda (grammar)
     (pair (non-terminals grammar)
           (map (lambda (nt)
-                 (gen-nt-first-set nt grammar))
+                 (gen-first-set nt grammar (eps grammar)))
                (non-terminals grammar)))))
 
 
@@ -387,25 +381,28 @@
 ; generates the follow set for the given non-terminal
 (define gen-follow-set
   (lambda (nt grammar)
+    ; We apply the rules to each production with our nt in its RHS
     (map (lambda (prod)
-           (cond
-             ; Rule 2
-             ((is-rightmost-element? nt (cdr prod))
-              (gen-follow-set (car prod)))
-             ; Rule 3 and 4
-             (else
-              (union
-               ; FIRST(y) - {Epsilon}
-               (set-difference
-                (gen-x-first-set
-                 (everything-after nt (cdr prod)) grammar (eps grammar))
-                '(()))
-               ; if Epsilon is in FIRST(y)
-               ; then Follow(A)
-               (if (contains? '() (gen-x-first-set
-                                   (everything-after nt (cdr prod)) grammar (eps grammar)))
-                   (gen-follow-set (car prod) grammar)
-                   '())))))
+           ; Our production can satisfy just Rule 2 XOR (Rule 3 OR Rule 4) - need to check both last rules if Rule 2 isn't applied
+           ; Rule 2 first
+           ; A -> xB
+           (if (is-rightmost-element? nt (cdr prod))
+               ; FOLLOW(A)
+               (gen-follow-set (car prod))
+               ; Rule 3 and 4
+               ; A -> xBy
+               (union ; We need to examine both cases
+                ; FIRST(y) - {Epsilon}
+                (set-difference
+                 (gen-first-set
+                  (everything-after nt (cdr prod)) grammar (eps grammar))
+                 '(()))
+                ; if Epsilon is in FIRST(y)
+                ; then Follow(A)
+                (if (contains? '() (gen-first-set
+                                    (everything-after nt (cdr prod)) grammar (eps grammar)))
+                    (gen-follow-set (car prod) grammar)
+                    '()))))
          (get-productions-with-nt-in-rhs nt grammar))))
 
 
@@ -498,5 +495,5 @@
 
 
 
-(follow-sets calc-gram)
+;(follow-sets calc-gram)
 
