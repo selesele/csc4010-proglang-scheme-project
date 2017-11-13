@@ -352,11 +352,15 @@
 
 
 
-; inserts $$ into the star symbol's FOLLOW set
+; adds $$ into the start symbol's FOLLOW set
 (define insert-end-marker
   (lambda (follow-sets)
-    ;TODO
-    '()))
+    (cons (list (caar follow-sets) (append (cadar follow-sets) '("$$")))
+          (letrec ((helper (lambda (the-rest)
+                             (if (null? (cdr the-rest))
+                                 '()
+                                 (cons (car the-rest) (cdr the-rest))))))
+            (helper (cdr follow-sets))))))
 
 ; Gets the last element of a list
 (define last-elem
@@ -408,29 +412,34 @@
 
 ; association list with the follow sets for each non-terminal
 (define follow-sets
-  ; To be inserted after we generate everything else
-  ;(insert-end-marker
    (lambda (grammar)
-     (pair (non-terminals grammar)
-           ; see about expanding this and doing it for just the one line
-           (map (lambda (nt)
-                  (gen-follow-set nt grammar))
-                (non-terminals grammar)))))
+     ; To be inserted after we generate everything else
+     (insert-end-marker
+      (pair (non-terminals grammar)
+            ; see about expanding this and doing it for just the one line
+            (map (lambda (nt)
+                   (gen-follow-set nt grammar))
+                 (non-terminals grammar))))))
 
 
 
+; TODO
+; Keep in mind that our start symbol is inside follow-sets
+(define gen-predict-set
+  (lambda (TODO)
+    '()))
 
+; TODO
+; Keep in mind that our start symbol is inside follow-sets
 (define parse-table
   (lambda (grammar)
-    ; Return parse table for grammar.
-    ; Table looks like the grammar, except that each RHS is replaced with a
-    ; (predict-set RHS) pair.
-    ; My version uses the get-knowledge routine above.
-
-      ;;; your code here
-      '() ;; added by MJK
-    ))
-
+    (pair (non-terminals grammar)
+          (pair (map (lambda (nt)
+                       (gen-predict-set nt))
+                     (non-terminals grammar))
+                (map (lambda (nt)
+                       (get-productions nt grammar))
+                     (non-terminals grammar))))))
 
 ; PARSING TESTING FUNCTIONS
 
