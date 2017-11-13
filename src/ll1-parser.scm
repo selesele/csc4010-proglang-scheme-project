@@ -162,6 +162,10 @@
 ; redo the defines to have lambda
 ; They recompute sets on the fly, and so shall we
 
+
+
+
+
 ; We interestingly need to define logical OR and AND as functions to be used as first-class values
 ; Particularly, we ran into this case when trying to foldr with or
 (define or-fn
@@ -287,6 +291,8 @@
 ; Returns the productions with a LHS of nt
 ; Assummes nt is a LHS and grammar is in the form of our calculator grammar
 ;  That is, an association list with all productions on the RHS for a given non-terminal
+
+;TODO change to get-rhs for clarity
 (define (get-productions nt grammar)
    (cdr
     (assoc nt grammar)))
@@ -297,6 +303,17 @@
               (only-non-terminals? w grammar))
             (get-productions nt grammar))))
 
+; Checks if the given list contains the specified object
+(define contains?
+  (lambda (obj lst)
+    (not (not (member obj lst)))))
+
+; Returns a list of full productions that each contain nt in their rhs
+(define get-productions-with-nt-in-rhs
+  (lambda (nt grammar)
+    (filter (lambda (w)
+              (contains? nt (flatten (cdr w))))
+            (productions grammar))))
 
 
 ; Generates the FIRST set for the given non terminal using the given grammar
@@ -305,40 +322,103 @@
   ; Rule 3 is applied first
   (flatten
    ; TODO fit this map to have the grammar and eps too
-   (map (lambda (nt)
-          (gen-x-first-set nt grammar (eps grammar)))
+   (map (lambda (prod)
+          (gen-x-first-set prod grammar (eps grammar)))
         (get-productions nt grammar))))
 
 ; Returns the FIRST set for a given x using the given grammar
 (define (gen-x-first-set x grammar epsilon-producing-set)
   (cond
     ; Rule 1 - FIRST(Epsilon) = {Epsilon}
-    ((null? x) '())
-    ((list? x)
+    ((null? x) '(()))
+    ; Is it just a terminal? FIRST(x) = {x}
+    ((terminal? x grammar) ('(x)))
+    ; It is just a non-terminal, and so we apply rule 3 first
+    ((non-terminal? x grammar) (gen-nt-first-set x grammar))
+    (else
      ; Rule 2 - FIRST(aw) = FIRST(a) = {a}
      (if (terminal? (car x) grammar) (list (car x))
          ; Rule 4 - we have a w with two cases
+         ; We also assume that lambda is not an element of FIRST(A) if A is in the EPS
          ; FIRST(Aw) = FIRST(A)
-         (if (not (in-eps? (car x) grammar)) (gen-x-first-set x grammar (eps grammar))
+         (if (not (in-eps? (car x) grammar)) (gen-x-first-set (car x) grammar epsilon-producing-set)
              ; FIRST(Aw) = (FIRST(A) - {Epsilon}) U FIRST(w)
              (union
               (set-difference (gen-x-first-set (car x) grammar epsilon-producing-set) '(()))
-              (gen-x-first-set (cdr x) grammar epsilon-producing-set)))))
-    ; It is just a terminal - FIRST(x) = {x}
-    ((terminal? x grammar) ('(x)))
-    (else
-     ; It is just a non-terminal, and so we apply rule 3 first
-     (gen-nt-first-set x grammar))))
+              (gen-x-first-set (cdr x) grammar epsilon-producing-set)))))))
 
 
 ; association list with the first sets for each non-terminal
 (define first-sets
   (lambda (grammar)
-    (pair non-terminals
+    (pair (non-terminals grammar)
           (map (lambda (nt)
                  (gen-nt-first-set nt grammar))
                (non-terminals grammar)))))
 
+
+
+; inserts $$ into the star symbol's FOLLOW set
+(define insert-end-marker
+  (lambda (follow-sets)
+    ;TODO
+    '()))
+
+; Gets the last element of a list
+(define last-elem
+  (lambda (lst)
+    (if (null? (cdr lst)) (car lst)
+        (last-elem (cdr lst)))))
+
+; Checks if the given element is the rightmost in a list
+(define is-rightmost-element?
+  (lambda (e lst)
+    (equal? (last lst) e)))
+
+; Returns everything after a specified element in a given list
+; The special case is once again due to epsilon productions being un-wraped
+(define everything-after
+  (lambda (e lst)
+    (cond
+      ((null? lst) '())
+      ((equal? e (car lst)) (cdr lst))
+      ((everything-after e (cdr lst))))))
+
+; generates the follow set for the given non-terminal
+(define gen-follow-set
+  (lambda (nt grammar)
+    (map (lambda (prod)
+           (cond
+             ; Rule 2
+             ((is-rightmost-element? nt (cdr prod))
+              (gen-follow-set (car prod)))
+             ; Rule 3 and 4
+             (else
+              (union
+               ; FIRST(y) - {Epsilon}
+               (set-difference
+                (gen-x-first-set
+                 (everything-after nt (cdr prod)) grammar (eps grammar))
+                '(()))
+               ; if Epsilon is in FIRST(y)
+               ; then Follow(A)
+               (if (contains? '() (gen-x-first-set
+                                   (everything-after nt (cdr prod)) grammar (eps grammar)))
+                   (gen-follow-set (car prod) grammar)
+                   '())))))
+         (get-productions-with-nt-in-rhs nt grammar))))
+
+
+; association list with the follow sets for each non-terminal
+(define follow-sets
+  ; To be inserted after we generate everything else
+  ;(insert-end-marker
+   (lambda (grammar)
+     (pair (non-terminals grammar)
+           ; see about expanding this and doing it for just the one line
+           (map (lambda (nt)
+                  (gen-follow-set nt grammar))
+                (non-terminals grammar)))))
 
 
 
@@ -418,4 +498,5 @@
 
 
 
+(follow-sets calc-gram)
 
