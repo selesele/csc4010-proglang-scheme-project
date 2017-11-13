@@ -1,11 +1,10 @@
 # CSC 4010 Scheme Project
 
-# Project Parts
+# Project Components
 * String Search
 
-First, a sublist matcher. Then, a line-grep.
+End result: a simple list-grepping tool.
 
 * LL Parser Generator
 
-We'll have a skeleton to start with.
-
+We have forgone the skeleton and are developing the PREDICT set generator from the ground up.
