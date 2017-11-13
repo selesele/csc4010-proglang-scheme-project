@@ -212,6 +212,8 @@
 ; Our assumption is that if a nt is in eps, lambda is in FIRST(nt)
 ; EPS is defined as any non-terminal that has an epsilon production OR
 ;  any non-terminal that has a production containing only non-terminals that are all in EPS
+; TODO XXX Should we be able to produce the EPS of some given string? e.g. if the given value produces lambda
+; I think so, given the bototm of page 88
 (define eps
   (lambda (grammar)
     (union
@@ -292,7 +294,7 @@
             (get-rhs-set nt grammar))))
 
 ; Returns a list of full productions that each contain nt in their rhs
-(define get-rhs-with-nt-in-rhs
+(define get-productions-with-nt-in-rhs
   (lambda (nt grammar)
     (filter (lambda (w)
               (contains? nt (flatten (cdr w))))
@@ -365,9 +367,11 @@
 ; generates the follow set for the given non-terminal
 (define gen-follow-set
   (lambda (nt grammar)
+    (begin
+      (printf nt)
     ; We apply the rules to each production with our nt in its RHS
     (map (lambda (prod)
-           ; Our production can satisfy just Rule 2 XOR (Rule 3 OR Rule 4) - need to check both last rules if Rule 2 isn't applied
+           (if (null? prod) '(); Our production can satisfy just Rule 2 XOR (Rule 3 OR Rule 4) - need to check both last rules if Rule 2 isn't applied
            ; Rule 2 first
            ; A -> xB
            (if (is-rightmost-element? nt (cdr prod))
@@ -390,9 +394,12 @@
                     ; Need to handle the case that A and our B are the same
                     (if (equal? nt (car prod)) '()
                         (gen-follow-set (car prod) grammar))
-                    '()))))
-         (get-rhs-with-nt-in-rhs nt grammar))))
+                    '())))))
+         (get-productions-with-nt-in-rhs nt grammar)))))
 
+; N.B. should we just compute them on the fly instead of automatically doing this?
+; Can also have check in gen-follow-set for if nt is start symbol, insert $$
+; XXX TODO SEE ABOVE
 ; association list with the follow sets for each non-terminal
 (define follow-sets
    (lambda (grammar)
