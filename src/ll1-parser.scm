@@ -1,4 +1,10 @@
 #lang racket
+;; LL1 Parsing & Related Functions
+;; By Caleb Currie & Will Nesbitt
+
+;;---------------------BEGIN GIVEN HELPER CODE-------------------------
+; Small modifications may be present, and it does not include all
+;  code from the skeleton file.
 
 ;;
 ;; Here is our good old friend the calculator language,
@@ -20,22 +26,6 @@
     ("F"  ("id") ("num") ("(" "E" ")"))
     ))
 
-(define test-gram
-  '(("P"  ("SL" "$$"))
-    ("SL" ("S" "SL") ())
-    ("S"  ("id" ":=" "E") ("read" "id") ("write" "E"))
-    ("E"  ("T" "TT"))
-    ("T"  ("F" "FT"))
-    ("TT" ("ao" "T" "TT") ())
-    ("FT" ("mo" "F" "FT") ())
-    ("ao" ("+") ("-") ("SL" "TT"))
-    ("mo" ("*") ("/"))
-    ("F"  ("id") ("num") ("(" "E" ")"))
-    ))
-
-
-; Helper Functions
-
 ; Takes in two lists of lists and pairs (into an association list)
    ; each corresponding element
 ; Pairs up until one list runs out - the remainder of the longer list is dropped
@@ -47,7 +37,6 @@
      (cons (list (car lst1) (car lst2))
            (pair (cdr lst1) (cdr lst2))))))
 
-; KOSA/SCOTT HELPER FUNCTIONS
 (define sort
   (lambda (L)
     ; Use string comparison to quicksort list.
@@ -134,7 +123,6 @@
                        (cdr prods)))
                 grammar))))
 
-
 (define non-terminal?
   (lambda (x grammar)
     (not (not (member x (non-terminals grammar))))))
@@ -156,17 +144,22 @@
   (lambda sets
     (unique-sort (apply append sets))))
 
-
-;-----------------------OUR FUNCTIONS---------------------------
-; change non-terminals to get-non-terminals
-; redo the defines to have lambda
-; They recompute sets on the fly, and so shall we
+;;---------------------END GIVEN HELPER CODE---------------------------
 
 
+;;--------------------------OUR FUNCTIONS------------------------------
+
+;; N.B.
+; We came across a few obersvations when writing this program.
+; One is that in the grammar, the RHS of an epsilon production cpuld be
+; '(()) instead of '().
+; If it were so, a few of our functions would not need special cases.
+; The thought behind this is that if every other production is a list,
+;  why treat it differently? It can just be the list containing the empty list.
 
 
-
-; We interestingly need to define logical OR and AND as functions to be used as first-class values
+; We interestingly need to define logical OR and AND as functions to be
+;  used as first-class values
 ; Particularly, we ran into this case when trying to foldr with or
 (define or-fn
     (lambda (b1 b2)
@@ -174,7 +167,6 @@
 (define and-fn
     (lambda (b1 b2)
       (and b1 b2)))
-
 
 ; Nests list items each within a list
 (define nest
@@ -188,6 +180,33 @@
     (if (null? lst) '()
         (cons (car (car lst)) (un-nest (cdr lst))))))
 
+; Removes all occurence of obj in lst
+(define remove
+  (lambda (obj lst)
+    (cond
+      ((null? lst) '())
+      ((equal? (car lst) obj) (remove obj (cdr lst)))
+      (else
+       (cons (car lst) (remove obj (cdr lst)))))))
+
+; Returns set1 - set2
+; N.B. if removing epsilon, you need to pass in the set containing epsilon
+(define set-difference
+  (lambda (set1 set2)
+    (cond
+      ; can't remove something from nothing
+      ((null? set1) '())
+      ; if our current element of set 1 is not in set 2, we can return it and continue
+      ((not (member (car set1) set2))
+       (cons (car set1) (set-difference (cdr set1) set2)))
+      (else
+       ; otherwise, we need to remove that element (by ignoring it)
+       (set-difference (cdr set1) set2)))))
+
+; Checks if the given list contains the specified object
+(define contains?
+  (lambda (obj lst)
+    (not (not (member obj lst)))))
 
 ; Epsilon-producing set
 ; Our assumption is that if a nt is in eps, lambda is in FIRST(nt)
@@ -209,11 +228,11 @@
                          (has-non-terminal-only-production? nt grammar))
                        (non-terminals grammar))))))))
 
-; Take a non-terminal
-; does it have a nt only prod?
-; if so, then check if at least one nt-only prod has only nt's that 
-
-
+; Lookup to see if the given non-terminal is in the EPS set
+(define in-eps?
+  (lambda (nt grammar)
+    ; member's return value is forced int #t/#f
+    (not (not (member nt (eps grammar))))))
 
 ; Takes in an x and sees if it will ever produce epsilon given the grammar
 (define produces-epsilon?
@@ -227,14 +246,11 @@
                     (foldr or-fn #f
                            (map (lambda (prod)
                                   (produces-epsilon? prod grammar))
-                                (get-non-terminal-only-productions nt grammar))))
+                                (get-non-terminal-only-rhs-set nt grammar))))
                    (else #f)))
                 w))))
 
-
-
-
-; Determines if a given w is comprised of only non-terminals
+; Determines if a given list is comprised of only non-terminals
 ; The special case is to deal with the lack of symmetrical definitons in the grammar
 ; i.e. the production containing epsilon is only the empty list not the list containing the empty list
 (define only-non-terminals?
@@ -252,95 +268,61 @@
     (not (not (member #t
                       (map (lambda (prod)
                              (only-non-terminals? prod grammar))
-                           (get-productions nt grammar)))))))
-
+                           (get-rhs-set nt grammar)))))))
 
 ; Checks if the given non-terminal has an epsilon production
 (define has-epsilon-production?
   (lambda (nt grammar)
     (not (not (member #t
-                      (map null? (get-productions nt grammar)))))))
+                      (map null? (get-rhs-set nt grammar)))))))
 
-; Removes all occurence of obj in lst
-(define (remove obj lst)
-    (cond
-      ((null? lst) '())
-      ((equal? (car lst) obj) (remove obj (cdr lst)))
-      (else
-       (cons (car lst) (remove obj (cdr lst))))))
-
-; Returns set1 - set2
-; N.B. if removing epsilon, you need to pass in the set containing epsilon
-(define (set-difference set1 set2)
-  (cond
-    ; can't remove something from nothing
-    ((null? set1) '())
-    ; if our current element of set 1 is not in set 2, we can return it and continue
-    ((not (member (car set1) set2))
-     (cons (car set1) (set-difference (cdr set1) set2)))
-    (else
-    ; otherwise, we need to remove that element (by ignoring it)
-     (set-difference (cdr set1) set2))))
-
-; Lookup to see if the given non-terminal is in the EPS set
-(define (in-eps? nt grammar)
-  ; member's return value is forced int #t/#f
-  (not (not (member nt (eps grammar)))))
-
-
-; Returns the productions with a LHS of nt
+; Returns the set of Right Hand Sides of productions with an LHS of nt
 ; Assummes nt is a LHS and grammar is in the form of our calculator grammar
 ;  That is, an association list with all productions on the RHS for a given non-terminal
+(define get-rhs-set
+  (lambda (nt grammar)
+    (cdr
+     (assoc nt grammar))))
 
-;TODO change to get-rhs for clarity
-(define (get-productions nt grammar)
-   (cdr
-    (assoc nt grammar)))
-
-(define get-non-terminal-only-productions
+; As above, but only the RHSes comprised solely of non-terminals
+(define get-non-terminal-only-rhs-set
   (lambda (nt grammar)
     (filter (lambda (w)
               (only-non-terminals? w grammar))
-            (get-productions nt grammar))))
-
-; Checks if the given list contains the specified object
-(define contains?
-  (lambda (obj lst)
-    (not (not (member obj lst)))))
+            (get-rhs-set nt grammar))))
 
 ; Returns a list of full productions that each contain nt in their rhs
-(define get-productions-with-nt-in-rhs
+(define get-rhs-with-nt-in-rhs
   (lambda (nt grammar)
     (filter (lambda (w)
               (contains? nt (flatten (cdr w))))
             (productions grammar))))
 
-
 ; Returns the FIRST set for a given x using the given grammar
-(define (gen-first-set x grammar epsilon-producing-set)
-  (cond
-    ; Rule 1 - FIRST(Epsilon) = {Epsilon}
-    ((null? x) '(()))
-    ; Is it just a terminal? FIRST(x) = {x}
-    ((terminal? x grammar) ('(x)))
-    ; It is just a non-terminal, and so we apply Rule 3 first
-    ((non-terminal? x grammar)
-     (flatten
-      (map (lambda (prod)
-             (gen-first-set prod grammar epsilon-producing-set))
-           (get-productions x grammar))))
-    (else
-     ; Rule 2 - FIRST(aw) = FIRST(a) = {a}
-     (if (terminal? (car x) grammar) (list (car x))
-         ; Rule 4 - we have a w with two cases
-         ; We also assume that lambda is not an element of FIRST(A) if A is in the EPS
-         ; FIRST(Aw) = FIRST(A)
-         (if (not (in-eps? (car x) grammar)) (gen-first-set (car x) grammar epsilon-producing-set)
-             ; FIRST(Aw) = (FIRST(A) - {Epsilon}) U FIRST(w)
-             (union
-              (set-difference (gen-first-set (car x) grammar epsilon-producing-set) '(()))
-              (gen-first-set (cdr x) grammar epsilon-producing-set)))))))
-
+(define gen-first-set
+  (lambda (x grammar epsilon-producing-set)
+    (cond
+      ; Rule 1 - FIRST(Epsilon) = {Epsilon}
+      ((null? x) '(()))
+      ; Is it just a terminal? FIRST(x) = {x}
+      ((terminal? x grammar) ('(x)))
+      ; It is just a non-terminal, and so we apply Rule 3 first
+      ((non-terminal? x grammar)
+       (flatten
+        (map (lambda (prod)
+               (gen-first-set prod grammar epsilon-producing-set))
+             (get-rhs-set x grammar))))
+      (else
+       ; Rule 2 - FIRST(aw) = FIRST(a) = {a}
+       (if (terminal? (car x) grammar) (list (car x))
+           ; Rule 4 - we have a w with two cases
+           ; We also assume that lambda is not an element of FIRST(A) if A is in the EPS
+           ; FIRST(Aw) = FIRST(A)
+           (if (not (in-eps? (car x) grammar)) (gen-first-set (car x) grammar epsilon-producing-set)
+               ; FIRST(Aw) = (FIRST(A) - {Epsilon}) U FIRST(w)
+               (union
+                (set-difference (gen-first-set (car x) grammar epsilon-producing-set) '(()))
+                (gen-first-set (cdr x) grammar epsilon-producing-set))))))))
 
 ; association list with the first sets for each non-terminal
 (define first-sets
@@ -349,8 +331,6 @@
           (map (lambda (nt)
                  (gen-first-set nt grammar (eps grammar)))
                (non-terminals grammar)))))
-
-
 
 ; adds $$ into the start symbol's FOLLOW set
 (define insert-end-marker
@@ -391,37 +371,38 @@
            ; Rule 2 first
            ; A -> xB
            (if (is-rightmost-element? nt (cdr prod))
-               ; FOLLOW(A)
-               (gen-follow-set (car prod))
+               ; Need to handle the case that A and our B are the same
+               (if (equal? nt (car prod)) '()
+                   ; FOLLOW(A)
+                   (gen-follow-set (car prod) grammar))
                ; Rule 3 and 4
                ; A -> xBy
-               (union ; We need to examine both cases
+               (append ;union ; We need to examine both cases
                 ; FIRST(y) - {Epsilon}
                 (set-difference
                  (gen-first-set
                   (everything-after nt (cdr prod)) grammar (eps grammar))
                  '(()))
                 ; if Epsilon is in FIRST(y)
-                ; then Follow(A)
+                ; then FOLLOW(A)
                 (if (contains? '() (gen-first-set
                                     (everything-after nt (cdr prod)) grammar (eps grammar)))
-                    (gen-follow-set (car prod) grammar)
+                    ; Need to handle the case that A and our B are the same
+                    (if (equal? nt (car prod)) '()
+                        (gen-follow-set (car prod) grammar))
                     '()))))
-         (get-productions-with-nt-in-rhs nt grammar))))
-
+         (get-rhs-with-nt-in-rhs nt grammar))))
 
 ; association list with the follow sets for each non-terminal
 (define follow-sets
    (lambda (grammar)
      ; To be inserted after we generate everything else
-     (insert-end-marker
+     ;(insert-end-marker
       (pair (non-terminals grammar)
             ; see about expanding this and doing it for just the one line
             (map (lambda (nt)
                    (gen-follow-set nt grammar))
-                 (non-terminals grammar))))))
-
-
+                 (non-terminals grammar)))))
 
 ; TODO
 ; Keep in mind that our start symbol is inside follow-sets
@@ -438,9 +419,12 @@
                        (gen-predict-set nt))
                      (non-terminals grammar))
                 (map (lambda (nt)
-                       (get-productions nt grammar))
+                       (get-rhs-set nt grammar))
                      (non-terminals grammar))))))
 
+
+
+;;--------------------BEGIN GIVEN PARSING FUNCTIONS---------------------
 ; PARSING TESTING FUNCTIONS
 
 (define lookup
@@ -499,10 +483,4 @@
                        (die (string-append "no prediction for " (car stack)
                                            " when seeing " (car input)))))))))))
       (helper (list (start-symbol grammar)) input))))
-
-
-
-
-
-;(follow-sets calc-gram)
-
+;;----------------------END GIVEN PARSING FUNCTIONS---------------------
