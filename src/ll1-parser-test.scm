@@ -1,5 +1,7 @@
 #lang racket
-(load "ll1-parser.scm")
+(require racket/include)
+(include "ll1-parser.scm")
+
 "Testing for EPS"
 (newline)
 (eps calc-gram)
