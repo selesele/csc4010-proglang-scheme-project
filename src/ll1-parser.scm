@@ -5,6 +5,10 @@
 ;;---------------------BEGIN GIVEN HELPER CODE-------------------------
 ; Small modifications may be present, and it does not include all
 ;  code from the skeleton file.
+;
+; N.B. as per our talk with Dr. Kosa, the grammar structure could be more
+;  consistent if the epsilon production was not just the empty list, but
+;  rather the list containing the empty list
 
 ;;
 ;; Here is our good old friend the calculator language,
@@ -25,17 +29,6 @@
     ("mo" ("*") ("/"))
     ("F"  ("id") ("num") ("(" "E" ")"))
     ))
-
-; Takes in two lists of lists and pairs (into an association list)
-   ; each corresponding element
-; Pairs up until one list runs out - the remainder of the longer list is dropped
-(define (pair lst1 lst2)
-  (cond
-    ((null? lst1) '())
-    ((null? lst2) '())
-    (else
-     (cons (list (car lst1) (car lst2))
-           (pair (cdr lst1) (cdr lst2))))))
 
 (define sort
   (lambda (L)
@@ -149,18 +142,20 @@
 
 ;;--------------------------OUR FUNCTIONS------------------------------
 
-;; N.B.
-; We came across a few obersvations when writing this program.
-; One is that in the grammar, the RHS of an epsilon production cpuld be
-; '(()) instead of '().
-; If it were so, a few of our functions would not need special cases.
-; The thought behind this is that if every other production is a list,
-;  why treat it differently? It can just be the list containing the empty list.
-
+; Takes in two lists of lists and pairs (into an association list)
+   ; each corresponding element
+; Pairs up until one list runs out - the remainder of the longer list is dropped
+(define (pair lst1 lst2)
+  (cond
+    ((null? lst1) '())
+    ((null? lst2) '())
+    (else
+     (cons (list (car lst1) (car lst2))
+           (pair (cdr lst1) (cdr lst2))))))
 
 ; We interestingly need to define logical OR and AND as functions to be
 ;  used as first-class values
-; Particularly, we ran into this case when trying to foldr with or
+; Particularly, we ran into this case when trying to foldl with or
 (define or-fn
     (lambda (b1 b2)
       (or b1 b2)))
@@ -240,12 +235,12 @@
 (define produces-epsilon?
   (lambda (w grammar)
     ; all non-terminals in the function must
-    (foldr and-fn #t
+    (foldl and-fn #t
            (map (lambda (nt)
                   (cond
                    ((has-epsilon-production? nt grammar) #t)
                    ((has-non-terminal-only-production? nt grammar)
-                    (foldr or-fn #f
+                    (foldl or-fn #f
                            (map (lambda (prod)
                                   (produces-epsilon? prod grammar))
                                 (get-non-terminal-only-rhs-set nt grammar))))
@@ -283,8 +278,9 @@
 ;  That is, an association list with all productions on the RHS for a given non-terminal
 (define get-rhs-set
   (lambda (nt grammar)
-    (cdr
-     (assoc nt grammar))))
+    (if (not (assoc nt grammar))
+        '()
+        (cdr (assoc nt grammar)))))
 
 ; As above, but only the RHSes comprised solely of non-terminals
 (define get-non-terminal-only-rhs-set
@@ -292,6 +288,13 @@
     (filter (lambda (w)
               (only-non-terminals? w grammar))
             (get-rhs-set nt grammar))))
+
+; Returns a list of full productions that each have nt as their lhs
+(define get-productions
+  (lambda (nt grammar)
+    (filter (lambda (w)
+              (equal? nt (car w)))
+            (productions grammar))))
 
 ; Returns a list of full productions that each contain nt in their rhs
 (define get-productions-with-nt-in-rhs
@@ -322,7 +325,7 @@
            ; FIRST(Aw) = FIRST(A)
            (if (not (in-eps? (car x) grammar)) (gen-first-set (car x) grammar epsilon-producing-set)
                ; FIRST(Aw) = (FIRST(A) - {Epsilon}) U FIRST(w)
-               (union
+               (append ;TODO XXX should be union but having issues with epsilon appearing when taking union
                 (set-difference (gen-first-set (car x) grammar epsilon-producing-set) '(()))
                 (gen-first-set (cdr x) grammar epsilon-producing-set))))))))
 
@@ -358,44 +361,44 @@
 ; Returns everything after a specified element in a given list
 ; The special case is once again due to epsilon productions being un-wraped
 (define everything-after
-  (lambda (e lst)
+  (lambda (obj lst)
     (cond
       ((null? lst) '())
-      ((equal? e (car lst)) (cdr lst))
-      ((everything-after e (cdr lst))))))
+      ((equal? obj (car lst)) (cdr lst))
+      ((everything-after obj (cdr lst))))))
 
-; generates the follow set for the given non-terminal
+; As our rules define how to build follow sets for our non-terminal in the RHS, we build them for it
+;TODO add start symbol check
 (define gen-follow-set
-  (lambda (nt grammar)
-    (begin
-      (printf nt)
-    ; We apply the rules to each production with our nt in its RHS
-    (map (lambda (prod)
-           (if (null? prod) '(); Our production can satisfy just Rule 2 XOR (Rule 3 OR Rule 4) - need to check both last rules if Rule 2 isn't applied
-           ; Rule 2 first
-           ; A -> xB
-           (if (is-rightmost-element? nt (cdr prod))
-               ; Need to handle the case that A and our B are the same
-               (if (equal? nt (car prod)) '()
-                   ; FOLLOW(A)
-                   (gen-follow-set (car prod) grammar))
-               ; Rule 3 and 4
-               ; A -> xBy
-               (append ;union ; We need to examine both cases
-                ; FIRST(y) - {Epsilon}
-                (set-difference
-                 (gen-first-set
-                  (everything-after nt (cdr prod)) grammar (eps grammar))
-                 '(()))
-                ; if Epsilon is in FIRST(y)
-                ; then FOLLOW(A)
-                (if (contains? '() (gen-first-set
-                                    (everything-after nt (cdr prod)) grammar (eps grammar)))
-                    ; Need to handle the case that A and our B are the same
-                    (if (equal? nt (car prod)) '()
-                        (gen-follow-set (car prod) grammar))
-                    '())))))
-         (get-productions-with-nt-in-rhs nt grammar)))))
+  (lambda (nt grammar start-symbol)
+    ; We have a kludge to solve our duplicate returns
+    ; We had issues with epsilon when doing unions, so we use append instead
+    (unique
+     (sort
+      (remove '()
+              (flatten
+               (letrec ([helper (lambda (nt finished-set)
+                                  (map (lambda (prod)
+                                         (cond
+                                           ((null? prod) '()) ; Epsilon production are not considered
+                                           ((contains? nt finished-set) '()) ; We've already looked at FOLLOW(nt)
+                                           ; Rule 2
+                                           ((is-rightmost-element? nt (flatten (cdr prod)))
+                                            (if (equal? nt (car prod)) '()
+                                                (helper (car prod) (cons nt finished-set))))
+                                           ; Rule 3 and 4
+                                           (else
+                                            (append ;union TODO
+                                             (remove '()
+                                                     (gen-first-set
+                                                      (everything-after nt (flatten (cdr prod))) grammar (eps grammar)))
+                                             (if (contains? '() (gen-first-set
+                                                                 (everything-after nt (flatten (cdr prod))) grammar (eps grammar)))
+                                                 (if (equal? nt (car prod)) '()
+                                                     (helper (car prod) (cons nt finished-set)))
+                                                 '())))))
+                                       (get-productions-with-nt-in-rhs nt grammar)))])
+                 (helper nt '()))))))))
 
 ; N.B. should we just compute them on the fly instead of automatically doing this?
 ; Can also have check in gen-follow-set for if nt is start symbol, insert $$
@@ -408,30 +411,57 @@
       (pair (non-terminals grammar)
             ; see about expanding this and doing it for just the one line
             (map (lambda (nt)
-                   (gen-follow-set nt grammar))
+                   (gen-follow-set nt grammar (start-symbol grammar)))
                  (non-terminals grammar)))))
 
-; TODO
-; Keep in mind that our start symbol is inside follow-sets
+; returns the PREDICT set for a given production
 (define gen-predict-set
-  (lambda (TODO)
-    '()))
+  (lambda (prod grammar)
+    (sort
+     (remove '()
+            
+             ; FIRST(alpha)
+             ; Again, our kludge is present due to union's limitations
+             (append
+              (gen-first-set (flatten (cdr prod)) grammar (eps grammar))
+              ; if EPS(alpha) then FOLLOW(A) else null
+              (if (produces-epsilon? (flatten (cdr prod)) grammar)
+                  (gen-follow-set (car prod) grammar (start-symbol grammar))
+                  '()))))))
 
-; TODO
-; Keep in mind that our start symbol is inside follow-sets
+; Returns an association list of all productions and their corresponding predict sets
+(define predict-sets-over-grammar
+  (lambda (grammar)
+    (pair (productions grammar)
+          (map (lambda (prod)
+                 (gen-predict-set prod grammar))
+               (productions grammar)))))
+
+; Returns the predict sets for a given non terminal's productions
+(define predict-sets
+  (lambda (nt grammar)
+    (map (lambda (prod)
+           (gen-predict-set prod grammar))
+         (get-productions nt grammar))))
+
+; Returns an association list of each predict set and rhs it was
+;  generated over, given the appropriate structures
+(define pair-pred-rhs
+  (lambda (predict-sets rhs-sets)
+    (if (null? rhs-sets)
+        '()
+        (cons (pair (car predict-sets) (car rhs-sets))
+              (pair-pred-rhs (cdr predict-sets) (cdr rhs-sets))))))
+
+; Generates the parse-table for the given grammar
 (define parse-table
   (lambda (grammar)
-    (pair (non-terminals grammar)
-          (pair (map (lambda (nt)
-                       (gen-predict-set nt))
-                     (non-terminals grammar))
-                (map (lambda (nt)
-                       (get-rhs-set nt grammar))
-                     (non-terminals grammar))))))
+    (map (lambda (nt)
+           (apply list nt (pair (predict-sets nt grammar)
+                          (get-rhs-set nt grammar))))
+         (non-terminals grammar))))
 
-
-
-;;--------------------BEGIN GIVEN PARSING FUNCTIONS---------------------
+;;---------------------BEGIN GIVEN PARSING FUNCTIONS----------------------
 ; PARSING TESTING FUNCTIONS
 
 (define lookup
@@ -490,4 +520,4 @@
                        (die (string-append "no prediction for " (car stack)
                                            " when seeing " (car input)))))))))))
       (helper (list (start-symbol grammar)) input))))
-;;----------------------END GIVEN PARSING FUNCTIONS---------------------
+;;-----------------------END GIVEN PARSING FUNCTIONS----------------------
